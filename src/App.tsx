@@ -105,7 +105,7 @@ function App() {
   const [batchSize, setBatchSize] = useState(25)
   const [updatePct, setUpdatePct] = useState(20)
   const [payloadMode, setPayloadMode] = useState<PayloadMode>('simple')
-  const [running, setRunning] = useState(true)
+  const [running, setRunning] = useState(false)
   const [items, setItems] = useState<StreamItem[]>([])
   const [incomingRate, setIncomingRate] = useState(0)
   const [inputProbe, setInputProbe] = useState('')
@@ -383,7 +383,7 @@ function App() {
         </section>
       </div>
 
-      <FPSStats bottom={16} right={16} top="auto" left="auto" graphHeight={60} graphWidth={160} />
+      <FPSStats bottom={16} right={16} top="auto" left="auto" graphWidth={160} />
     </div>
   )
 }
