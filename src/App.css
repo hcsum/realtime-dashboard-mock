@@ -124,6 +124,13 @@ h1 {
   text-align: right;
 }
 
+.control-row input[type='range'] {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 .toggle-group {
   display: flex;
   gap: 12px;
