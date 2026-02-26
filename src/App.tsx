@@ -13,6 +13,9 @@ type StreamItem = {
   payload: Record<string, unknown>
 }
 
+const TICK_MIN = 1
+const TICK_MAX = 1000
+
 const clampNumber = (value: number, min: number, max: number) => {
   if (Number.isNaN(value)) return min
   return Math.min(max, Math.max(min, value))
@@ -112,6 +115,8 @@ function App() {
 
   const nextIdRef = useRef(1)
   const incomingCounterRef = useRef(0)
+
+  const tickSliderValue = TICK_MAX + TICK_MIN - tickRate
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -215,26 +220,30 @@ function App() {
 
           <div className="panel-section">
             <label className="control-label" htmlFor="tickRate">
-              Tick Rate (ms)
+              Tick Interval (ms)
             </label>
             <div className="control-row">
               <input
                 id="tickRate"
                 type="range"
-                min={1}
-                max={1000}
-                value={tickRate}
+                min={TICK_MIN}
+                max={TICK_MAX}
+                value={tickSliderValue}
                 onChange={(event) =>
-                  setTickRate(clampNumber(Number(event.target.value), 1, 1000))
+                  setTickRate(
+                    TICK_MAX +
+                      TICK_MIN -
+                      clampNumber(Number(event.target.value), TICK_MIN, TICK_MAX),
+                  )
                 }
               />
               <input
                 type="number"
-                min={1}
-                max={1000}
+                min={TICK_MIN}
+                max={TICK_MAX}
                 value={tickRate}
                 onChange={(event) =>
-                  setTickRate(clampNumber(Number(event.target.value), 1, 1000))
+                  setTickRate(clampNumber(Number(event.target.value), TICK_MIN, TICK_MAX))
                 }
               />
             </div>
@@ -352,7 +361,9 @@ function App() {
               <strong>{visibleItems.length.toLocaleString()}</strong> rows in the DOM
             </div>
             <div className="list-meta">
-              Tick: {tickRate}ms · Batch: {batchSize} · Updates: {updatePct}%
+              Tick Interval: {tickRate} ms · Batch: {batchSize} →{' '}
+              {Math.round((batchSize * 1000) / tickRate).toLocaleString()} items/sec · Updates:{' '}
+              {updatePct}%
               {filterText
                 ? ` · Filtered: ${visibleItems.length.toLocaleString()} / ${items.length.toLocaleString()}`
                 : ''}
@@ -383,7 +394,7 @@ function App() {
         </section>
       </div>
 
-      <FPSStats bottom={16} right={16} top="auto" left="auto" graphWidth={160} />
+      <FPSStats bottom={16} right={16} top="auto" left="auto" graphHeight={60} graphWidth={160} />
     </div>
   )
 }

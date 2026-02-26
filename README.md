@@ -1,6 +1,6 @@
 # Data Firehose Simulation
 
-Frontend-only UI that simulates a high-frequency data stream to intentionally stress the main thread.
+I have been asked too many times during interviews in my career about how to handle high-frequency data streams on frontend.
 
 ## Quick start
 
