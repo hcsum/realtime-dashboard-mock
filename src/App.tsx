@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import FPSStats from 'react-fps-stats'
 import './App.css'
 
-type PayloadMode = 'simple' | 'heavy'
-
 type StreamItem = {
   id: number
   title: string
@@ -11,6 +9,11 @@ type StreamItem = {
   updatedAt: string
   color: string
   payload: Record<string, unknown>
+}
+
+type FilterItemsProps = {
+  value: string
+  onChange: (value: string) => void
 }
 
 const TICK_MIN = 1
@@ -36,50 +39,6 @@ const makeSimplePayload = (id: number, title: string, value: number) => ({
   status: value % 2 === 0 ? 'even' : 'odd',
 })
 
-const makeHeavyPayload = (id: number, title: string, value: number) => {
-  const seed = Date.now() + Math.floor(Math.random() * 1000)
-  const vectors = Array.from({ length: 12 }, (_, index) => ({
-    index,
-    magnitude: Math.random() * value,
-    coords: Array.from({ length: 8 }, () => Math.random() * 100),
-  }))
-  const trail = Array.from({ length: 6 }, (_, index) => ({
-    step: index,
-    note: `Trace-${id}-${index}-${Math.floor(Math.random() * 9999)}`,
-    flags: {
-      active: Math.random() > 0.4,
-      critical: Math.random() > 0.9,
-    },
-    points: Array.from({ length: 5 }, (_, pointIndex) => ({
-      pointIndex,
-      x: Math.random() * 1000,
-      y: Math.random() * 1000,
-      weight: Math.random(),
-    })),
-  }))
-
-  return {
-    id,
-    title,
-    value,
-    label: `Item ${id}`,
-    createdAt: seed,
-    meta: {
-      origin: `node-${id % 13}`,
-      checksum: `${seed}-${value}-${id}`,
-      tags: ['hot', 'volatile', 'stream', `tier-${id % 5}`],
-    },
-    vectors,
-    trail,
-    history: Array.from({ length: 4 }, (_, index) => ({
-      index,
-      timestamp: seed - index * 1234,
-      value: Math.random() * value,
-      delta: (Math.random() - 0.5) * 100,
-    })),
-  }
-}
-
 const makeTitle = () => {
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
   const digits = '0123456789'
@@ -92,22 +51,35 @@ const makeTitle = () => {
   return `${left}-${right}`
 }
 
-const buildItem = (id: number, mode: PayloadMode): StreamItem => {
+const buildItem = (id: number): StreamItem => {
   const value = Math.floor(Math.random() * 100000)
   const updatedAt = new Date().toLocaleTimeString()
   const color = makeColor()
   const title = makeTitle()
-  const payload =
-    mode === 'heavy' ? makeHeavyPayload(id, title, value) : makeSimplePayload(id, title, value)
+  const payload = makeSimplePayload(id, title, value)
 
   return { id, title, value, updatedAt, color, payload }
 }
+
+const FilterItems = ({ value, onChange }: FilterItemsProps) => (
+  <div className="list-filter">
+    <label className="control-label" htmlFor="probeInput">
+      Filter Items
+    </label>
+    <input
+      id="probeInput"
+      type="text"
+      value={value}
+      placeholder="Filter by item title (e.g. ABZ-1209)"
+      onChange={(event) => onChange(event.target.value)}
+    />
+  </div>
+)
 
 function App() {
   const [tickRate, setTickRate] = useState(100)
   const [batchSize, setBatchSize] = useState(25)
   const [updatePct, setUpdatePct] = useState(20)
-  const [payloadMode, setPayloadMode] = useState<PayloadMode>('simple')
   const [running, setRunning] = useState(false)
   const [items, setItems] = useState<StreamItem[]>([])
   const [incomingRate, setIncomingRate] = useState(0)
@@ -141,11 +113,11 @@ function App() {
           if (shouldUpdate) {
             const index = Math.floor(Math.random() * next.length)
             const existing = next[index]
-            next[index] = buildItem(existing.id, payloadMode)
+            next[index] = buildItem(existing.id)
           } else {
             const idValue = nextIdRef.current
             nextIdRef.current += 1
-            next.push(buildItem(idValue, payloadMode))
+            next.push(buildItem(idValue))
           }
         }
 
@@ -154,7 +126,7 @@ function App() {
     }, tickRate)
 
     return () => window.clearInterval(id)
-  }, [running, tickRate, batchSize, updatePct, payloadMode])
+  }, [running, tickRate, batchSize, updatePct])
 
   const handleDelete = (id: number) => {
     setItems((prev) => prev.filter((item) => item.id !== id))
@@ -214,7 +186,7 @@ function App() {
           <div className="panel-section">
             <h2>Mock Stream Controller</h2>
             <p className="panel-description">
-              Dial up the chaos. These controls tune the data rate, payload weight, and update churn.
+              Dial up the chaos. These controls tune the data rate and update churn.
             </p>
           </div>
 
@@ -303,44 +275,6 @@ function App() {
             </div>
           </div>
 
-          <div className="panel-section">
-            <span className="control-label">Payload Complexity</span>
-            <div className="toggle-group">
-              <label className="toggle-option">
-                <input
-                  type="radio"
-                  name="payload"
-                  checked={payloadMode === 'simple'}
-                  onChange={() => setPayloadMode('simple')}
-                />
-                Simple
-              </label>
-              <label className="toggle-option">
-                <input
-                  type="radio"
-                  name="payload"
-                  checked={payloadMode === 'heavy'}
-                  onChange={() => setPayloadMode('heavy')}
-                />
-                Heavy
-              </label>
-            </div>
-          </div>
-
-          <div className="panel-section">
-            <label className="control-label" htmlFor="probeInput">
-              Filter Items
-            </label>
-            <input
-              id="probeInput"
-              type="text"
-              value={inputProbe}
-              placeholder="Filter by item title (e.g. ABZ-1209)"
-              onChange={(event) => setInputProbe(event.target.value)}
-            />
-            <p className="hint">Filters update as the stream runs. Expect lag under load.</p>
-          </div>
-
           <div className="panel-section status">
             <div>
               <span className="status-label">Stream State</span>
@@ -356,6 +290,7 @@ function App() {
         </aside>
 
         <section className="list-panel">
+          <FilterItems value={inputProbe} onChange={setInputProbe} />
           <div className="list-header">
             <div>
               <strong>{visibleItems.length.toLocaleString()}</strong> rows in the DOM
