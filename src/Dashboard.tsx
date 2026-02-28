@@ -25,7 +25,7 @@ const FilterItems = ({ value, onChange }: FilterItemsProps) => (
       id="probeInput"
       type="text"
       value={value}
-      placeholder="Filter by item title (e.g. ABZ-1209)"
+      placeholder="Filter by title or note (e.g. ABZ-1209)"
       onChange={(event) => onChange(event.target.value)}
     />
     <p className="hint">Filters update as the stream runs. Expect lag under load.</p>
