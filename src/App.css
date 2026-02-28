@@ -231,7 +231,7 @@ h1 {
 
 .list-row {
   display: grid;
-  grid-template-columns: 90px 140px minmax(0, 1fr) 160px 110px;
+  grid-template-columns: 80px minmax(0, 1fr) minmax(0, 1fr) 140px 160px 140px;
   gap: 12px;
   align-items: center;
   padding: 10px 16px;
@@ -255,9 +255,32 @@ h1 {
 
 .cell-id,
 .cell-title,
+.cell-note,
 .cell-value,
 .cell-updated {
   font-weight: 600;
+}
+
+.action-cell {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-input {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(12, 15, 22, 0.2);
+  background: rgba(255, 255, 255, 0.65);
+  color: #0b0e14;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.inline-input::placeholder {
+  color: rgba(11, 14, 20, 0.45);
+  font-weight: 500;
 }
 
 .ghost {

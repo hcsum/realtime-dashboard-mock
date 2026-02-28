@@ -5,6 +5,7 @@ import './App.css'
 type StreamItem = {
   id: number
   title: string
+  note: string
   value: number
   updatedAt: string
   color: string
@@ -58,7 +59,16 @@ const buildItem = (id: number): StreamItem => {
   const title = makeTitle()
   const payload = makeSimplePayload(id, title, value)
 
-  return { id, title, value, updatedAt, color, payload }
+  return { id, title, note: '', value, updatedAt, color, payload }
+}
+
+const updateItem = (item: StreamItem): StreamItem => {
+  const value = Math.floor(Math.random() * 100000)
+  const updatedAt = new Date().toLocaleTimeString()
+  const color = makeColor()
+  const payload = makeSimplePayload(item.id, item.title, value)
+
+  return { ...item, value, updatedAt, color, payload }
 }
 
 const FilterItems = ({ value, onChange }: FilterItemsProps) => (
@@ -73,6 +83,7 @@ const FilterItems = ({ value, onChange }: FilterItemsProps) => (
       placeholder="Filter by item title (e.g. ABZ-1209)"
       onChange={(event) => onChange(event.target.value)}
     />
+    <p className="hint">Filters update as the stream runs. Expect lag under load.</p>
   </div>
 )
 
@@ -84,6 +95,7 @@ function App() {
   const [items, setItems] = useState<StreamItem[]>([])
   const [incomingRate, setIncomingRate] = useState(0)
   const [inputProbe, setInputProbe] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const nextIdRef = useRef(1)
   const incomingCounterRef = useRef(0)
@@ -113,7 +125,7 @@ function App() {
           if (shouldUpdate) {
             const index = Math.floor(Math.random() * next.length)
             const existing = next[index]
-            next[index] = buildItem(existing.id)
+            next[index] = updateItem(existing)
           } else {
             const idValue = nextIdRef.current
             nextIdRef.current += 1
@@ -139,6 +151,18 @@ function App() {
   const handleReset = () => {
     setItems([])
     nextIdRef.current = 1
+  }
+
+  const handleTitleChange = (id: number, title: string) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, title } : item)))
+  }
+
+  const handleNoteChange = (id: number, note: string) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, note } : item)))
+  }
+
+  const handleEditToggle = (id: number) => {
+    setEditingId((prev) => (prev === id ? null : id))
   }
 
   const filterText = inputProbe.trim().toLowerCase()
@@ -308,23 +332,58 @@ function App() {
             <div className="list-row list-row--head">
               <span>ID</span>
               <span>Title</span>
+              <span>Note</span>
               <span>Value</span>
               <span>Last Updated</span>
               <span>Action</span>
             </div>
-            {visibleItems.map((item) => (
-              <div key={item.id} className="list-row" style={{ backgroundColor: item.color }}>
-                <span className="cell-id">#{item.id}</span>
-                <span className="cell-title">{item.title}</span>
-                <span className="cell-value">{item.value.toLocaleString()}</span>
-                <span className="cell-updated">{item.updatedAt}</span>
-                <span>
-                  <button type="button" className="ghost" onClick={() => handleDelete(item.id)}>
-                    Delete
-                  </button>
-                </span>
-              </div>
-            ))}
+            {visibleItems.map((item) => {
+              const isEditing = editingId === item.id
+              return (
+                <div key={item.id} className="list-row" style={{ backgroundColor: item.color }}>
+                  <span className="cell-id">#{item.id}</span>
+                  <span className="cell-title">
+                    {isEditing ? (
+                      <input
+                        className="inline-input"
+                        type="text"
+                        value={item.title}
+                        onChange={(event) => handleTitleChange(item.id, event.target.value)}
+                      />
+                    ) : (
+                      item.title
+                    )}
+                  </span>
+                  <span className="cell-note">
+                    {isEditing ? (
+                      <input
+                        className="inline-input"
+                        type="text"
+                        value={item.note}
+                        onChange={(event) => handleNoteChange(item.id, event.target.value)}
+                        placeholder="Add note"
+                      />
+                    ) : (
+                      item.note || '—'
+                    )}
+                  </span>
+                  <span className="cell-value">{item.value.toLocaleString()}</span>
+                  <span className="cell-updated">{item.updatedAt}</span>
+                  <span className="action-cell">
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => handleEditToggle(item.id)}
+                    >
+                      {isEditing ? 'Done' : 'Edit'}
+                    </button>
+                    <button type="button" className="ghost" onClick={() => handleDelete(item.id)}>
+                      Delete
+                    </button>
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </section>
       </div>
