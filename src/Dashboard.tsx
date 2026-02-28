@@ -112,7 +112,7 @@ const FilterItems = ({ value, onChange }: FilterItemsProps) => (
       id="probeInput"
       type="text"
       value={value}
-      placeholder="Filter by item title (e.g. ABZ-1209)"
+      placeholder="Filter by title or note (e.g. ABZ-1209)"
       onChange={(event) => onChange(event.target.value)}
     />
     <p className="hint">Filters update as the stream runs. Expect lag under load.</p>
@@ -183,7 +183,11 @@ const Dashboard = forwardRef<DashboardHandle, DashboardProps>(({ incomingRate },
 
   const filterText = inputProbe.trim().toLowerCase()
   const visibleItems = filterText
-    ? items.filter((item) => item.title.toLowerCase().includes(filterText))
+    ? items.filter((item) => {
+        const titleMatch = item.title.toLowerCase().includes(filterText)
+        if (titleMatch) return true
+        return item.note.toLowerCase().includes(filterText)
+      })
     : items
   const rowData = useMemo<RowData>(
     () => ({
