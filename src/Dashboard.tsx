@@ -96,7 +96,11 @@ const Dashboard = forwardRef<DashboardHandle, DashboardProps>(({ incomingRate },
 
   const filterText = inputProbe.trim().toLowerCase()
   const visibleItems = filterText
-    ? items.filter((item) => item.title.toLowerCase().includes(filterText))
+    ? items.filter((item) => {
+        const titleMatch = item.title.toLowerCase().includes(filterText)
+        if (titleMatch) return true
+        return item.note.toLowerCase().includes(filterText)
+      })
     : items
 
   return (
