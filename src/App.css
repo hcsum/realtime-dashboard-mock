@@ -305,6 +305,17 @@ h1 {
   color: #f5f7ff;
 }
 
+.primary {
+  background: #22c55e;
+  border: 1px solid #16a34a;
+  color: #04150b;
+  font-weight: 700;
+}
+
+.primary:hover {
+  filter: brightness(0.95);
+}
+
 @media (max-width: 980px) {
   .app-body {
     grid-template-columns: 1fr;

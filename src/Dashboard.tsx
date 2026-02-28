@@ -1,0 +1,180 @@
+import { forwardRef, useImperativeHandle, useState } from 'react'
+import type { StreamBatch, StreamItem } from './streamTypes'
+import { makeSimplePayload } from './streamTypes'
+
+type FilterItemsProps = {
+  value: string
+  onChange: (value: string) => void
+}
+
+type DashboardProps = {
+  incomingRate: number
+}
+
+export type DashboardHandle = {
+  applyBatch: (batch: StreamBatch) => void
+  reset: () => void
+}
+
+const FilterItems = ({ value, onChange }: FilterItemsProps) => (
+  <div className="list-filter">
+    <label className="control-label" htmlFor="probeInput">
+      Filter Items
+    </label>
+    <input
+      id="probeInput"
+      type="text"
+      value={value}
+      placeholder="Filter by item title (e.g. ABZ-1209)"
+      onChange={(event) => onChange(event.target.value)}
+    />
+    <p className="hint">Filters update as the stream runs. Expect lag under load.</p>
+  </div>
+)
+
+const Dashboard = forwardRef<DashboardHandle, DashboardProps>(({ incomingRate }, ref) => {
+  const [items, setItems] = useState<StreamItem[]>([])
+  const [inputProbe, setInputProbe] = useState('')
+  const [editingId, setEditingId] = useState<number | null>(null)
+
+  const applyBatch = (batch: StreamBatch) => {
+    setItems((prev) => {
+      let next = prev
+      if (batch.inserts.length > 0) {
+        next = [...next, ...batch.inserts]
+      }
+      if (batch.updates.length > 0) {
+        const indexMap = new Map<number, number>()
+        for (let i = 0; i < next.length; i += 1) {
+          indexMap.set(next[i].id, i)
+        }
+        const updated = [...next]
+        for (const update of batch.updates) {
+          const index = indexMap.get(update.id)
+          if (index === undefined) continue
+          const existing = updated[index]
+          updated[index] = {
+            ...existing,
+            value: update.value,
+            updatedAt: update.updatedAt,
+            color: update.color,
+            payload: makeSimplePayload(existing.id, existing.title, update.value),
+          }
+        }
+        next = updated
+      }
+      return next
+    })
+  }
+
+  const reset = () => {
+    setItems([])
+    setEditingId(null)
+  }
+
+  useImperativeHandle(ref, () => ({ applyBatch, reset }))
+
+  const handleDelete = (id: number) => {
+    setItems((prev) => prev.filter((item) => item.id !== id))
+  }
+
+  const handleSort = () => {
+    setItems((prev) => [...prev].sort((a, b) => b.value - a.value))
+  }
+
+  const handleTitleChange = (id: number, title: string) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, title } : item)))
+  }
+
+  const handleNoteChange = (id: number, note: string) => {
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, note } : item)))
+  }
+
+  const handleEditToggle = (id: number) => {
+    setEditingId((prev) => (prev === id ? null : id))
+  }
+
+  const filterText = inputProbe.trim().toLowerCase()
+  const visibleItems = filterText
+    ? items.filter((item) => item.title.toLowerCase().includes(filterText))
+    : items
+
+  return (
+    <section className="list-panel">
+      <FilterItems value={inputProbe} onChange={setInputProbe} />
+      <div className="list-header">
+        <div>
+          <strong>{visibleItems.length.toLocaleString()}</strong> rows in the DOM
+        </div>
+        <div className="list-header-actions">
+          <div className="list-meta">
+            Total Items: {items.length.toLocaleString()} · Incoming Rate: {incomingRate.toLocaleString()} eps
+            {filterText
+              ? ` · Filtered: ${visibleItems.length.toLocaleString()} / ${items.length.toLocaleString()}`
+              : ''}
+          </div>
+          <button type="button" className="ghost" onClick={handleSort}>
+            Sort by Value
+          </button>
+        </div>
+      </div>
+      <div className="list">
+        <div className="list-row list-row--head">
+          <span>ID</span>
+          <span>Title</span>
+          <span>Note</span>
+          <span>Value</span>
+          <span>Last Updated</span>
+          <span>Action</span>
+        </div>
+        {visibleItems.map((item) => {
+          const isEditing = editingId === item.id
+          return (
+            <div key={item.id} className="list-row" style={{ backgroundColor: item.color }}>
+              <span className="cell-id">#{item.id}</span>
+              <span className="cell-title">
+                {isEditing ? (
+                  <input
+                    className="inline-input"
+                    type="text"
+                    value={item.title}
+                    onChange={(event) => handleTitleChange(item.id, event.target.value)}
+                  />
+                ) : (
+                  item.title
+                )}
+              </span>
+              <span className="cell-note">
+                {isEditing ? (
+                  <input
+                    className="inline-input"
+                    type="text"
+                    value={item.note}
+                    onChange={(event) => handleNoteChange(item.id, event.target.value)}
+                    placeholder="Add note"
+                  />
+                ) : (
+                  item.note || '—'
+                )}
+              </span>
+              <span className="cell-value">{item.value.toLocaleString()}</span>
+              <span className="cell-updated">{item.updatedAt}</span>
+              <span className="action-cell">
+                <button type="button" className="ghost" onClick={() => handleEditToggle(item.id)}>
+                  {isEditing ? 'Done' : 'Edit'}
+                </button>
+                <button type="button" className="ghost" onClick={() => handleDelete(item.id)}>
+                  Delete
+                </button>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+})
+
+Dashboard.displayName = 'Dashboard'
+
+export default Dashboard

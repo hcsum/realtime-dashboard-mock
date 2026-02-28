@@ -1,43 +1,8 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import FPSStats from 'react-fps-stats'
 import './App.css'
-
-type StreamItem = {
-  id: number
-  title: string
-  note: string
-  value: number
-  updatedAt: string
-  color: string
-  payload: Record<string, unknown>
-}
-
-type FilterItemsProps = {
-  value: string
-  onChange: (value: string) => void
-}
-
-type StreamUpdate = {
-  id: number
-  value: number
-  updatedAt: string
-  color: string
-}
-
-type StreamBatch = {
-  id: number
-  inserts: StreamItem[]
-  updates: StreamUpdate[]
-}
-
-type StreamViewProps = {
-  incomingRate: number
-}
-
-type StreamViewHandle = {
-  applyBatch: (batch: StreamBatch) => void
-  reset: () => void
-}
+import Dashboard, { type DashboardHandle } from './Dashboard'
+import { makeSimplePayload, type StreamItem, type StreamUpdate } from './streamTypes'
 
 const TICK_MIN = 1
 const TICK_MAX = 1000
@@ -53,14 +18,6 @@ const makeColor = () => {
   const lightness = 75 + Math.floor(Math.random() * 12)
   return `hsl(${hue} ${saturation}% ${lightness}%)`
 }
-
-const makeSimplePayload = (id: number, title: string, value: number) => ({
-  id,
-  title,
-  value,
-  label: `Item ${id}`,
-  status: value % 2 === 0 ? 'even' : 'odd',
-})
 
 const makeTitle = () => {
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -92,171 +49,9 @@ const makeUpdate = (id: number): StreamUpdate => {
   return { id, value, updatedAt, color }
 }
 
-const FilterItems = ({ value, onChange }: FilterItemsProps) => (
-  <div className="list-filter">
-    <label className="control-label" htmlFor="probeInput">
-      Filter Items
-    </label>
-    <input
-      id="probeInput"
-      type="text"
-      value={value}
-      placeholder="Filter by item title (e.g. ABZ-1209)"
-      onChange={(event) => onChange(event.target.value)}
-    />
-    <p className="hint">Filters update as the stream runs. Expect lag under load.</p>
-  </div>
-)
-
-const StreamView = forwardRef<StreamViewHandle, StreamViewProps>(({ incomingRate }, ref) => {
-  const [items, setItems] = useState<StreamItem[]>([])
-  const [inputProbe, setInputProbe] = useState('')
-  const [editingId, setEditingId] = useState<number | null>(null)
-
-  const applyBatch = (batch: StreamBatch) => {
-    setItems((prev) => {
-      let next = prev
-      if (batch.inserts.length > 0) {
-        next = [...next, ...batch.inserts]
-      }
-      if (batch.updates.length > 0) {
-        const indexMap = new Map<number, number>()
-        for (let i = 0; i < next.length; i += 1) {
-          indexMap.set(next[i].id, i)
-        }
-        const updated = [...next]
-        for (const update of batch.updates) {
-          const index = indexMap.get(update.id)
-          if (index === undefined) continue
-          const existing = updated[index]
-          updated[index] = {
-            ...existing,
-            value: update.value,
-            updatedAt: update.updatedAt,
-            color: update.color,
-            payload: makeSimplePayload(existing.id, existing.title, update.value),
-          }
-        }
-        next = updated
-      }
-      return next
-    })
-  }
-
-  const reset = () => {
-    setItems([])
-    setEditingId(null)
-  }
-
-  useImperativeHandle(ref, () => ({ applyBatch, reset }))
-
-  const handleDelete = (id: number) => {
-    setItems((prev) => prev.filter((item) => item.id !== id))
-  }
-
-  const handleSort = () => {
-    setItems((prev) => [...prev].sort((a, b) => b.value - a.value))
-  }
-
-  const handleTitleChange = (id: number, title: string) => {
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, title } : item)))
-  }
-
-  const handleNoteChange = (id: number, note: string) => {
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, note } : item)))
-  }
-
-  const handleEditToggle = (id: number) => {
-    setEditingId((prev) => (prev === id ? null : id))
-  }
-
-  const filterText = inputProbe.trim().toLowerCase()
-  const visibleItems = filterText
-    ? items.filter((item) => item.title.toLowerCase().includes(filterText))
-    : items
-
-  return (
-    <section className="list-panel">
-      <FilterItems value={inputProbe} onChange={setInputProbe} />
-      <div className="list-header">
-        <div>
-          <strong>{visibleItems.length.toLocaleString()}</strong> rows in the DOM
-        </div>
-        <div className="list-header-actions">
-          <div className="list-meta">
-            Total Items: {items.length.toLocaleString()} · Incoming Rate:{' '}
-            {incomingRate.toLocaleString()} eps
-            {filterText
-              ? ` · Filtered: ${visibleItems.length.toLocaleString()} / ${items.length.toLocaleString()}`
-              : ''}
-          </div>
-          <button type="button" className="ghost" onClick={handleSort}>
-            Sort by Value
-          </button>
-        </div>
-      </div>
-      <div className="list">
-        <div className="list-row list-row--head">
-          <span>ID</span>
-          <span>Title</span>
-          <span>Note</span>
-          <span>Value</span>
-          <span>Last Updated</span>
-          <span>Action</span>
-        </div>
-        {visibleItems.map((item) => {
-          const isEditing = editingId === item.id
-          return (
-            <div key={item.id} className="list-row" style={{ backgroundColor: item.color }}>
-              <span className="cell-id">#{item.id}</span>
-              <span className="cell-title">
-                {isEditing ? (
-                  <input
-                    className="inline-input"
-                    type="text"
-                    value={item.title}
-                    onChange={(event) => handleTitleChange(item.id, event.target.value)}
-                  />
-                ) : (
-                  item.title
-                )}
-              </span>
-              <span className="cell-note">
-                {isEditing ? (
-                  <input
-                    className="inline-input"
-                    type="text"
-                    value={item.note}
-                    onChange={(event) => handleNoteChange(item.id, event.target.value)}
-                    placeholder="Add note"
-                  />
-                ) : (
-                  item.note || '—'
-                )}
-              </span>
-              <span className="cell-value">{item.value.toLocaleString()}</span>
-              <span className="cell-updated">{item.updatedAt}</span>
-              <span className="action-cell">
-                <button type="button" className="ghost" onClick={() => handleEditToggle(item.id)}>
-                  {isEditing ? 'Done' : 'Edit'}
-                </button>
-                <button type="button" className="ghost" onClick={() => handleDelete(item.id)}>
-                  Delete
-                </button>
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </section>
-  )
-})
-
-StreamView.displayName = 'StreamView'
-
-function StreamContainer() {
-  const [tickRate, setTickRate] = useState(100)
-  const [batchSize, setBatchSize] = useState(25)
+function App() {
+  const [tickRate, setTickRate] = useState(500)
+  const [batchSize, setBatchSize] = useState(100)
   const [updatePct, setUpdatePct] = useState(20)
   const [running, setRunning] = useState(false)
   const [incomingRate, setIncomingRate] = useState(0)
@@ -265,7 +60,7 @@ function StreamContainer() {
   const incomingCounterRef = useRef(0)
   const existingIdsRef = useRef<number[]>([])
   const batchIdRef = useRef(0)
-  const streamViewRef = useRef<StreamViewHandle | null>(null)
+  const streamViewRef = useRef<DashboardHandle | null>(null)
 
   const tickSliderValue = TICK_MAX + TICK_MIN - tickRate
 
@@ -340,10 +135,10 @@ function StreamContainer() {
     <div className="app">
       <header className="app-header">
         <div className="header-title">
-          <p className="eyebrow">Data Firehose Simulation</p>
-          <h1>The Problem Phase</h1>
+          <h1>Real-time Dashboard Mock</h1>
           <p className="subtitle">
-            A deliberately unoptimized, high-frequency data stream meant to overwhelm the UI.
+            This demo mocks real-time polling or WebSocket streams with large volumes of data, and
+            focuses on optimizing frontend rendering and user interaction.
           </p>
         </div>
       </header>
@@ -358,7 +153,11 @@ function StreamContainer() {
           </div>
 
           <div className="panel-section panel-actions">
-            <button type="button" onClick={() => setRunning((prev) => !prev)}>
+            <button
+              type="button"
+              className={running ? 'ghost' : 'primary'}
+              onClick={() => setRunning((prev) => !prev)}
+            >
               {running ? 'Pause Stream' : 'Start Stream'}
             </button>
             <button type="button" onClick={handleResetStream}>
@@ -449,16 +248,12 @@ function StreamContainer() {
           </div>
         </aside>
 
-        <StreamView ref={streamViewRef} incomingRate={incomingRate} />
+        <Dashboard ref={streamViewRef} incomingRate={incomingRate} />
       </div>
 
       <FPSStats bottom={16} right={16} top="auto" left="auto" graphHeight={60} graphWidth={160} />
     </div>
   )
-}
-
-function App() {
-  return <StreamContainer />
 }
 
 export default App
