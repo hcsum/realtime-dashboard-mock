@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import FPSStats from 'react-fps-stats'
 import './App.css'
 import Dashboard, { type DashboardHandle } from './Dashboard'
@@ -55,6 +56,9 @@ function App() {
   const [updatePct, setUpdatePct] = useState(20)
   const [running, setRunning] = useState(false)
   const [incomingRate, setIncomingRate] = useState(0)
+  const [tickRateInput, setTickRateInput] = useState(String(tickRate))
+  const [batchSizeInput, setBatchSizeInput] = useState(String(batchSize))
+  const [updatePctInput, setUpdatePctInput] = useState(String(updatePct))
 
   const nextIdRef = useRef(1)
   const incomingCounterRef = useRef(0)
@@ -63,6 +67,18 @@ function App() {
   const streamViewRef = useRef<DashboardHandle | null>(null)
 
   const tickSliderValue = TICK_MAX + TICK_MIN - tickRate
+
+  useEffect(() => {
+    setTickRateInput(String(tickRate))
+  }, [tickRate])
+
+  useEffect(() => {
+    setBatchSizeInput(String(batchSize))
+  }, [batchSize])
+
+  useEffect(() => {
+    setUpdatePctInput(String(updatePct))
+  }, [updatePct])
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -117,16 +133,93 @@ function App() {
     setTickRate(TICK_MAX + TICK_MIN - clampNumber(value, TICK_MIN, TICK_MAX))
   }
 
-  const handleTickRateInputChange = (value: number) => {
-    setTickRate(clampNumber(value, TICK_MIN, TICK_MAX))
+  const commitTickRateInput = () => {
+    const trimmed = tickRateInput.trim()
+    if (!trimmed) {
+      setTickRateInput(String(tickRate))
+      return
+    }
+    const parsed = Number(trimmed)
+    if (Number.isNaN(parsed)) {
+      setTickRateInput(String(tickRate))
+      return
+    }
+    setTickRate(clampNumber(Math.round(parsed), TICK_MIN, TICK_MAX))
   }
 
-  const handleBatchSizeChange = (value: number) => {
+  const commitBatchSizeInput = () => {
+    const trimmed = batchSizeInput.trim()
+    if (!trimmed) {
+      setBatchSizeInput(String(batchSize))
+      return
+    }
+    const parsed = Number(trimmed)
+    if (Number.isNaN(parsed)) {
+      setBatchSizeInput(String(batchSize))
+      return
+    }
+    setBatchSize(clampNumber(Math.round(parsed), 1, 500))
+  }
+
+  const commitUpdatePctInput = () => {
+    const trimmed = updatePctInput.trim()
+    if (!trimmed) {
+      setUpdatePctInput(String(updatePct))
+      return
+    }
+    const parsed = Number(trimmed)
+    if (Number.isNaN(parsed)) {
+      setUpdatePctInput(String(updatePct))
+      return
+    }
+    setUpdatePct(clampNumber(Math.round(parsed), 0, 100))
+  }
+
+  const handleBatchSizeSliderChange = (value: number) => {
     setBatchSize(clampNumber(value, 1, 500))
   }
 
-  const handleUpdatePctChange = (value: number) => {
+  const handleUpdatePctSliderChange = (value: number) => {
     setUpdatePct(clampNumber(value, 0, 100))
+  }
+
+  const handleTickRateInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commitTickRateInput()
+      event.currentTarget.blur()
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setTickRateInput(String(tickRate))
+      event.currentTarget.blur()
+    }
+  }
+
+  const handleBatchSizeInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commitBatchSizeInput()
+      event.currentTarget.blur()
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setBatchSizeInput(String(batchSize))
+      event.currentTarget.blur()
+    }
+  }
+
+  const handleUpdatePctInputKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commitUpdatePctInput()
+      event.currentTarget.blur()
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setUpdatePctInput(String(updatePct))
+      event.currentTarget.blur()
+    }
   }
 
   const itemsPerSecond = Math.round((batchSize * 1000) / tickRate)
@@ -182,8 +275,10 @@ function App() {
                 type="number"
                 min={TICK_MIN}
                 max={TICK_MAX}
-                value={tickRate}
-                onChange={(event) => handleTickRateInputChange(Number(event.target.value))}
+                value={tickRateInput}
+                onChange={(event) => setTickRateInput(event.target.value)}
+                onBlur={commitTickRateInput}
+                onKeyDown={handleTickRateInputKeyDown}
               />
             </div>
           </div>
@@ -199,14 +294,16 @@ function App() {
                 min={1}
                 max={500}
                 value={batchSize}
-                onChange={(event) => handleBatchSizeChange(Number(event.target.value))}
+                onChange={(event) => handleBatchSizeSliderChange(Number(event.target.value))}
               />
               <input
                 type="number"
                 min={1}
                 max={500}
-                value={batchSize}
-                onChange={(event) => handleBatchSizeChange(Number(event.target.value))}
+                value={batchSizeInput}
+                onChange={(event) => setBatchSizeInput(event.target.value)}
+                onBlur={commitBatchSizeInput}
+                onKeyDown={handleBatchSizeInputKeyDown}
               />
             </div>
           </div>
@@ -222,14 +319,16 @@ function App() {
                 min={0}
                 max={100}
                 value={updatePct}
-                onChange={(event) => handleUpdatePctChange(Number(event.target.value))}
+                onChange={(event) => handleUpdatePctSliderChange(Number(event.target.value))}
               />
               <input
                 type="number"
                 min={0}
                 max={100}
-                value={updatePct}
-                onChange={(event) => handleUpdatePctChange(Number(event.target.value))}
+                value={updatePctInput}
+                onChange={(event) => setUpdatePctInput(event.target.value)}
+                onBlur={commitUpdatePctInput}
+                onKeyDown={handleUpdatePctInputKeyDown}
               />
             </div>
           </div>

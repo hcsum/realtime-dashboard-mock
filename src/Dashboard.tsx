@@ -1,4 +1,6 @@
-import { forwardRef, useImperativeHandle, useState } from 'react'
+import { forwardRef, useImperativeHandle, useMemo, useState } from 'react'
+import type { CSSProperties, ReactElement, KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { List } from 'react-window'
 import type { StreamBatch, StreamItem } from './streamTypes'
 import { makeSimplePayload } from './streamTypes'
 
@@ -14,6 +16,91 @@ type DashboardProps = {
 export type DashboardHandle = {
   applyBatch: (batch: StreamBatch) => void
   reset: () => void
+}
+
+type RowData = {
+  items: StreamItem[]
+  editingId: number | null
+  onTitleChange: (id: number, title: string) => void
+  onNoteChange: (id: number, note: string) => void
+  onEditToggle: (id: number) => void
+  onDelete: (id: number) => void
+}
+
+const ROW_HEIGHT = 56
+
+type RowProps = RowData & {
+  index: number
+  style: CSSProperties
+  ariaAttributes?: {
+    'aria-posinset': number
+    'aria-setsize': number
+    role: string
+  }
+}
+
+const DashboardRow = ({
+  index,
+  style,
+  ariaAttributes,
+  items,
+  editingId: activeId,
+  onTitleChange,
+  onNoteChange,
+  onEditToggle,
+  onDelete,
+}: RowProps): ReactElement | null => {
+  const item = items[index]
+  if (!item) return null
+  const isEditing = activeId === item.id
+  const handleEditKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    onEditToggle(item.id)
+    event.currentTarget.blur()
+  }
+  return (
+    <div className="list-row" style={{ ...style, backgroundColor: item.color }} {...ariaAttributes}>
+      <span className="cell-id">#{item.id}</span>
+      <span className="cell-title">
+          {isEditing ? (
+            <input
+              className="inline-input"
+              type="text"
+              value={item.title}
+              onChange={(event) => onTitleChange(item.id, event.target.value)}
+              onKeyDown={handleEditKeyDown}
+            />
+          ) : (
+            item.title
+          )}
+      </span>
+      <span className="cell-note">
+          {isEditing ? (
+            <input
+              className="inline-input"
+              type="text"
+              value={item.note}
+              onChange={(event) => onNoteChange(item.id, event.target.value)}
+              placeholder="Add note"
+              onKeyDown={handleEditKeyDown}
+            />
+        ) : (
+          item.note || '—'
+        )}
+      </span>
+      <span className="cell-value">{item.value.toLocaleString()}</span>
+      <span className="cell-updated">{item.updatedAt}</span>
+      <span className="action-cell">
+        <button type="button" className="ghost" onClick={() => onEditToggle(item.id)}>
+          {isEditing ? 'Done' : 'Edit'}
+        </button>
+        <button type="button" className="ghost" onClick={() => onDelete(item.id)}>
+          Delete
+        </button>
+      </span>
+    </div>
+  )
 }
 
 const FilterItems = ({ value, onChange }: FilterItemsProps) => (
@@ -98,6 +185,17 @@ const Dashboard = forwardRef<DashboardHandle, DashboardProps>(({ incomingRate },
   const visibleItems = filterText
     ? items.filter((item) => item.title.toLowerCase().includes(filterText))
     : items
+  const rowData = useMemo<RowData>(
+    () => ({
+      items: visibleItems,
+      editingId,
+      onTitleChange: handleTitleChange,
+      onNoteChange: handleNoteChange,
+      onEditToggle: handleEditToggle,
+      onDelete: handleDelete,
+    }),
+    [visibleItems, editingId],
+  )
 
   return (
     <section className="list-panel">
@@ -118,58 +216,23 @@ const Dashboard = forwardRef<DashboardHandle, DashboardProps>(({ incomingRate },
           </button>
         </div>
       </div>
+      <div className="list-row list-row--head">
+        <span>ID</span>
+        <span>Title</span>
+        <span>Note</span>
+        <span>Value</span>
+        <span>Last Updated</span>
+        <span>Action</span>
+      </div>
       <div className="list">
-        <div className="list-row list-row--head">
-          <span>ID</span>
-          <span>Title</span>
-          <span>Note</span>
-          <span>Value</span>
-          <span>Last Updated</span>
-          <span>Action</span>
-        </div>
-        {visibleItems.map((item) => {
-          const isEditing = editingId === item.id
-          return (
-            <div key={item.id} className="list-row" style={{ backgroundColor: item.color }}>
-              <span className="cell-id">#{item.id}</span>
-              <span className="cell-title">
-                {isEditing ? (
-                  <input
-                    className="inline-input"
-                    type="text"
-                    value={item.title}
-                    onChange={(event) => handleTitleChange(item.id, event.target.value)}
-                  />
-                ) : (
-                  item.title
-                )}
-              </span>
-              <span className="cell-note">
-                {isEditing ? (
-                  <input
-                    className="inline-input"
-                    type="text"
-                    value={item.note}
-                    onChange={(event) => handleNoteChange(item.id, event.target.value)}
-                    placeholder="Add note"
-                  />
-                ) : (
-                  item.note || '—'
-                )}
-              </span>
-              <span className="cell-value">{item.value.toLocaleString()}</span>
-              <span className="cell-updated">{item.updatedAt}</span>
-              <span className="action-cell">
-                <button type="button" className="ghost" onClick={() => handleEditToggle(item.id)}>
-                  {isEditing ? 'Done' : 'Edit'}
-                </button>
-                <button type="button" className="ghost" onClick={() => handleDelete(item.id)}>
-                  Delete
-                </button>
-              </span>
-            </div>
-          )
-        })}
+        <List<RowData>
+          style={{ width: '100%', height: '100%' }}
+          rowCount={visibleItems.length}
+          rowHeight={ROW_HEIGHT}
+          rowComponent={DashboardRow}
+          rowProps={rowData}
+          overscanCount={6}
+        />
       </div>
     </section>
   )

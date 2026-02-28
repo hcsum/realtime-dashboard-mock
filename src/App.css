@@ -243,7 +243,8 @@ h1 {
 
 .list {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .list-row {
@@ -255,6 +256,8 @@ h1 {
   font-size: 0.9rem;
   color: #0b0e14;
   border-bottom: 1px solid rgba(12, 15, 22, 0.1);
+  box-sizing: border-box;
+  height: 56px;
 }
 
 .list-row--head {
