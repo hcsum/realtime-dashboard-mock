@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import FPSStats from 'react-fps-stats'
 import './App.css'
 
@@ -15,6 +15,28 @@ type StreamItem = {
 type FilterItemsProps = {
   value: string
   onChange: (value: string) => void
+}
+
+type StreamUpdate = {
+  id: number
+  value: number
+  updatedAt: string
+  color: string
+}
+
+type StreamBatch = {
+  id: number
+  inserts: StreamItem[]
+  updates: StreamUpdate[]
+}
+
+type StreamViewProps = {
+  incomingRate: number
+}
+
+type StreamViewHandle = {
+  applyBatch: (batch: StreamBatch) => void
+  reset: () => void
 }
 
 const TICK_MIN = 1
@@ -62,13 +84,12 @@ const buildItem = (id: number): StreamItem => {
   return { id, title, note: '', value, updatedAt, color, payload }
 }
 
-const updateItem = (item: StreamItem): StreamItem => {
+const makeUpdate = (id: number): StreamUpdate => {
   const value = Math.floor(Math.random() * 100000)
   const updatedAt = new Date().toLocaleTimeString()
   const color = makeColor()
-  const payload = makeSimplePayload(item.id, item.title, value)
 
-  return { ...item, value, updatedAt, color, payload }
+  return { id, value, updatedAt, color }
 }
 
 const FilterItems = ({ value, onChange }: FilterItemsProps) => (
@@ -87,58 +108,47 @@ const FilterItems = ({ value, onChange }: FilterItemsProps) => (
   </div>
 )
 
-function App() {
-  const [tickRate, setTickRate] = useState(100)
-  const [batchSize, setBatchSize] = useState(25)
-  const [updatePct, setUpdatePct] = useState(20)
-  const [running, setRunning] = useState(false)
+const StreamView = forwardRef<StreamViewHandle, StreamViewProps>(({ incomingRate }, ref) => {
   const [items, setItems] = useState<StreamItem[]>([])
-  const [incomingRate, setIncomingRate] = useState(0)
   const [inputProbe, setInputProbe] = useState('')
   const [editingId, setEditingId] = useState<number | null>(null)
 
-  const nextIdRef = useRef(1)
-  const incomingCounterRef = useRef(0)
-
-  const tickSliderValue = TICK_MAX + TICK_MIN - tickRate
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setIncomingRate(incomingCounterRef.current)
-      incomingCounterRef.current = 0
-    }, 1000)
-
-    return () => window.clearInterval(id)
-  }, [])
-
-  useEffect(() => {
-    if (!running) return
-
-    const id = window.setInterval(() => {
-      incomingCounterRef.current += batchSize
-      setItems((prev) => {
-        const next = [...prev]
-
-        for (let i = 0; i < batchSize; i += 1) {
-          const shouldUpdate = next.length > 0 && Math.random() * 100 < updatePct
-
-          if (shouldUpdate) {
-            const index = Math.floor(Math.random() * next.length)
-            const existing = next[index]
-            next[index] = updateItem(existing)
-          } else {
-            const idValue = nextIdRef.current
-            nextIdRef.current += 1
-            next.push(buildItem(idValue))
+  const applyBatch = (batch: StreamBatch) => {
+    setItems((prev) => {
+      let next = prev
+      if (batch.inserts.length > 0) {
+        next = [...next, ...batch.inserts]
+      }
+      if (batch.updates.length > 0) {
+        const indexMap = new Map<number, number>()
+        for (let i = 0; i < next.length; i += 1) {
+          indexMap.set(next[i].id, i)
+        }
+        const updated = [...next]
+        for (const update of batch.updates) {
+          const index = indexMap.get(update.id)
+          if (index === undefined) continue
+          const existing = updated[index]
+          updated[index] = {
+            ...existing,
+            value: update.value,
+            updatedAt: update.updatedAt,
+            color: update.color,
+            payload: makeSimplePayload(existing.id, existing.title, update.value),
           }
         }
+        next = updated
+      }
+      return next
+    })
+  }
 
-        return next
-      })
-    }, tickRate)
+  const reset = () => {
+    setItems([])
+    setEditingId(null)
+  }
 
-    return () => window.clearInterval(id)
-  }, [running, tickRate, batchSize, updatePct])
+  useImperativeHandle(ref, () => ({ applyBatch, reset }))
 
   const handleDelete = (id: number) => {
     setItems((prev) => prev.filter((item) => item.id !== id))
@@ -146,11 +156,6 @@ function App() {
 
   const handleSort = () => {
     setItems((prev) => [...prev].sort((a, b) => b.value - a.value))
-  }
-
-  const handleReset = () => {
-    setItems([])
-    nextIdRef.current = 1
   }
 
   const handleTitleChange = (id: number, title: string) => {
@@ -171,6 +176,167 @@ function App() {
     : items
 
   return (
+    <section className="list-panel">
+      <FilterItems value={inputProbe} onChange={setInputProbe} />
+      <div className="list-header">
+        <div>
+          <strong>{visibleItems.length.toLocaleString()}</strong> rows in the DOM
+        </div>
+        <div className="list-header-actions">
+          <div className="list-meta">
+            Total Items: {items.length.toLocaleString()} · Incoming Rate:{' '}
+            {incomingRate.toLocaleString()} eps
+            {filterText
+              ? ` · Filtered: ${visibleItems.length.toLocaleString()} / ${items.length.toLocaleString()}`
+              : ''}
+          </div>
+          <button type="button" className="ghost" onClick={handleSort}>
+            Sort by Value
+          </button>
+        </div>
+      </div>
+      <div className="list">
+        <div className="list-row list-row--head">
+          <span>ID</span>
+          <span>Title</span>
+          <span>Note</span>
+          <span>Value</span>
+          <span>Last Updated</span>
+          <span>Action</span>
+        </div>
+        {visibleItems.map((item) => {
+          const isEditing = editingId === item.id
+          return (
+            <div key={item.id} className="list-row" style={{ backgroundColor: item.color }}>
+              <span className="cell-id">#{item.id}</span>
+              <span className="cell-title">
+                {isEditing ? (
+                  <input
+                    className="inline-input"
+                    type="text"
+                    value={item.title}
+                    onChange={(event) => handleTitleChange(item.id, event.target.value)}
+                  />
+                ) : (
+                  item.title
+                )}
+              </span>
+              <span className="cell-note">
+                {isEditing ? (
+                  <input
+                    className="inline-input"
+                    type="text"
+                    value={item.note}
+                    onChange={(event) => handleNoteChange(item.id, event.target.value)}
+                    placeholder="Add note"
+                  />
+                ) : (
+                  item.note || '—'
+                )}
+              </span>
+              <span className="cell-value">{item.value.toLocaleString()}</span>
+              <span className="cell-updated">{item.updatedAt}</span>
+              <span className="action-cell">
+                <button type="button" className="ghost" onClick={() => handleEditToggle(item.id)}>
+                  {isEditing ? 'Done' : 'Edit'}
+                </button>
+                <button type="button" className="ghost" onClick={() => handleDelete(item.id)}>
+                  Delete
+                </button>
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+})
+
+StreamView.displayName = 'StreamView'
+
+function StreamContainer() {
+  const [tickRate, setTickRate] = useState(100)
+  const [batchSize, setBatchSize] = useState(25)
+  const [updatePct, setUpdatePct] = useState(20)
+  const [running, setRunning] = useState(false)
+  const [incomingRate, setIncomingRate] = useState(0)
+
+  const nextIdRef = useRef(1)
+  const incomingCounterRef = useRef(0)
+  const existingIdsRef = useRef<number[]>([])
+  const batchIdRef = useRef(0)
+  const streamViewRef = useRef<StreamViewHandle | null>(null)
+
+  const tickSliderValue = TICK_MAX + TICK_MIN - tickRate
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setIncomingRate(incomingCounterRef.current)
+      incomingCounterRef.current = 0
+    }, 1000)
+
+    return () => window.clearInterval(id)
+  }, [])
+
+  useEffect(() => {
+    if (!running) return
+
+    const id = window.setInterval(() => {
+      incomingCounterRef.current += batchSize
+      const inserts: StreamItem[] = []
+      const updates: StreamUpdate[] = []
+
+      for (let i = 0; i < batchSize; i += 1) {
+        const canUpdate = existingIdsRef.current.length > 0
+        const shouldUpdate = canUpdate && Math.random() * 100 < updatePct
+
+        if (shouldUpdate) {
+          const index = Math.floor(Math.random() * existingIdsRef.current.length)
+          const idValue = existingIdsRef.current[index]
+          updates.push(makeUpdate(idValue))
+        } else {
+          const idValue = nextIdRef.current
+          nextIdRef.current += 1
+          inserts.push(buildItem(idValue))
+          existingIdsRef.current.push(idValue)
+        }
+      }
+
+      batchIdRef.current += 1
+      streamViewRef.current?.applyBatch({ id: batchIdRef.current, inserts, updates })
+    }, tickRate)
+
+    return () => window.clearInterval(id)
+  }, [running, tickRate, batchSize, updatePct])
+
+  const handleResetStream = () => {
+    nextIdRef.current = 1
+    existingIdsRef.current = []
+    batchIdRef.current = 0
+    incomingCounterRef.current = 0
+    setIncomingRate(0)
+    streamViewRef.current?.reset()
+  }
+
+  const handleTickRateSliderChange = (value: number) => {
+    setTickRate(TICK_MAX + TICK_MIN - clampNumber(value, TICK_MIN, TICK_MAX))
+  }
+
+  const handleTickRateInputChange = (value: number) => {
+    setTickRate(clampNumber(value, TICK_MIN, TICK_MAX))
+  }
+
+  const handleBatchSizeChange = (value: number) => {
+    setBatchSize(clampNumber(value, 1, 500))
+  }
+
+  const handleUpdatePctChange = (value: number) => {
+    setUpdatePct(clampNumber(value, 0, 100))
+  }
+
+  const itemsPerSecond = Math.round((batchSize * 1000) / tickRate)
+
+  return (
     <div className="app">
       <header className="app-header">
         <div className="header-title">
@@ -179,29 +345,6 @@ function App() {
           <p className="subtitle">
             A deliberately unoptimized, high-frequency data stream meant to overwhelm the UI.
           </p>
-        </div>
-        <div className="header-actions">
-          <div className="header-stats">
-            <div className="header-stat">
-              <span>Total Items</span>
-              <strong>{items.length.toLocaleString()}</strong>
-            </div>
-            <div className="header-stat">
-              <span>Incoming Rate</span>
-              <strong>{incomingRate.toLocaleString()} eps</strong>
-            </div>
-          </div>
-          <div className="header-buttons">
-            <button type="button" onClick={() => setRunning((prev) => !prev)}>
-              {running ? 'Pause Stream' : 'Start Stream'}
-            </button>
-            <button type="button" onClick={handleReset}>
-              Reset List
-            </button>
-            <button type="button" onClick={handleSort}>
-              Sort by Value
-            </button>
-          </div>
         </div>
       </header>
 
@@ -212,6 +355,15 @@ function App() {
             <p className="panel-description">
               Dial up the chaos. These controls tune the data rate and update churn.
             </p>
+          </div>
+
+          <div className="panel-section panel-actions">
+            <button type="button" onClick={() => setRunning((prev) => !prev)}>
+              {running ? 'Pause Stream' : 'Start Stream'}
+            </button>
+            <button type="button" onClick={handleResetStream}>
+              Reset Stream
+            </button>
           </div>
 
           <div className="panel-section">
@@ -225,22 +377,14 @@ function App() {
                 min={TICK_MIN}
                 max={TICK_MAX}
                 value={tickSliderValue}
-                onChange={(event) =>
-                  setTickRate(
-                    TICK_MAX +
-                      TICK_MIN -
-                      clampNumber(Number(event.target.value), TICK_MIN, TICK_MAX),
-                  )
-                }
+                onChange={(event) => handleTickRateSliderChange(Number(event.target.value))}
               />
               <input
                 type="number"
                 min={TICK_MIN}
                 max={TICK_MAX}
                 value={tickRate}
-                onChange={(event) =>
-                  setTickRate(clampNumber(Number(event.target.value), TICK_MIN, TICK_MAX))
-                }
+                onChange={(event) => handleTickRateInputChange(Number(event.target.value))}
               />
             </div>
           </div>
@@ -256,18 +400,14 @@ function App() {
                 min={1}
                 max={500}
                 value={batchSize}
-                onChange={(event) =>
-                  setBatchSize(clampNumber(Number(event.target.value), 1, 500))
-                }
+                onChange={(event) => handleBatchSizeChange(Number(event.target.value))}
               />
               <input
                 type="number"
                 min={1}
                 max={500}
                 value={batchSize}
-                onChange={(event) =>
-                  setBatchSize(clampNumber(Number(event.target.value), 1, 500))
-                }
+                onChange={(event) => handleBatchSizeChange(Number(event.target.value))}
               />
             </div>
           </div>
@@ -283,18 +423,14 @@ function App() {
                 min={0}
                 max={100}
                 value={updatePct}
-                onChange={(event) =>
-                  setUpdatePct(clampNumber(Number(event.target.value), 0, 100))
-                }
+                onChange={(event) => handleUpdatePctChange(Number(event.target.value))}
               />
               <input
                 type="number"
                 min={0}
                 max={100}
                 value={updatePct}
-                onChange={(event) =>
-                  setUpdatePct(clampNumber(Number(event.target.value), 0, 100))
-                }
+                onChange={(event) => handleUpdatePctChange(Number(event.target.value))}
               />
             </div>
           </div>
@@ -307,90 +443,22 @@ function App() {
               </span>
             </div>
             <div>
-              <span className="status-label">Rendered Items</span>
-              <span className="status-value">{items.length.toLocaleString()}</span>
+              <span className="status-label">Target Throughput</span>
+              <span className="status-value">{itemsPerSecond.toLocaleString()} items/sec</span>
             </div>
           </div>
         </aside>
 
-        <section className="list-panel">
-          <FilterItems value={inputProbe} onChange={setInputProbe} />
-          <div className="list-header">
-            <div>
-              <strong>{visibleItems.length.toLocaleString()}</strong> rows in the DOM
-            </div>
-            <div className="list-meta">
-              Tick Interval: {tickRate} ms · Batch: {batchSize} →{' '}
-              {Math.round((batchSize * 1000) / tickRate).toLocaleString()} items/sec · Updates:{' '}
-              {updatePct}%
-              {filterText
-                ? ` · Filtered: ${visibleItems.length.toLocaleString()} / ${items.length.toLocaleString()}`
-                : ''}
-            </div>
-          </div>
-          <div className="list">
-            <div className="list-row list-row--head">
-              <span>ID</span>
-              <span>Title</span>
-              <span>Note</span>
-              <span>Value</span>
-              <span>Last Updated</span>
-              <span>Action</span>
-            </div>
-            {visibleItems.map((item) => {
-              const isEditing = editingId === item.id
-              return (
-                <div key={item.id} className="list-row" style={{ backgroundColor: item.color }}>
-                  <span className="cell-id">#{item.id}</span>
-                  <span className="cell-title">
-                    {isEditing ? (
-                      <input
-                        className="inline-input"
-                        type="text"
-                        value={item.title}
-                        onChange={(event) => handleTitleChange(item.id, event.target.value)}
-                      />
-                    ) : (
-                      item.title
-                    )}
-                  </span>
-                  <span className="cell-note">
-                    {isEditing ? (
-                      <input
-                        className="inline-input"
-                        type="text"
-                        value={item.note}
-                        onChange={(event) => handleNoteChange(item.id, event.target.value)}
-                        placeholder="Add note"
-                      />
-                    ) : (
-                      item.note || '—'
-                    )}
-                  </span>
-                  <span className="cell-value">{item.value.toLocaleString()}</span>
-                  <span className="cell-updated">{item.updatedAt}</span>
-                  <span className="action-cell">
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => handleEditToggle(item.id)}
-                    >
-                      {isEditing ? 'Done' : 'Edit'}
-                    </button>
-                    <button type="button" className="ghost" onClick={() => handleDelete(item.id)}>
-                      Delete
-                    </button>
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </section>
+        <StreamView ref={streamViewRef} incomingRate={incomingRate} />
       </div>
 
       <FPSStats bottom={16} right={16} top="auto" left="auto" graphHeight={60} graphWidth={160} />
     </div>
   )
+}
+
+function App() {
+  return <StreamContainer />
 }
 
 export default App
